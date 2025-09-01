@@ -1,38 +1,64 @@
-using System.Net.Http.Json;
+using System.Text.Json;
+using FCGPagamentos.Worker.Models;
+using FCGPagamentos.Worker.Services;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 
+namespace FCGPagamentos.Worker.Functions;
+
 public class ProcessPaymentFunction
 {
-    private readonly HttpClient _http;
-    private readonly ILogger _log;
-    private readonly string _apiBase;
-    private readonly string _internalToken;
+    private readonly IPaymentService _paymentService;
+    private readonly ILogger<ProcessPaymentFunction> _logger;
 
-    public ProcessPaymentFunction(IHttpClientFactory f, ILoggerFactory lf, IConfiguration cfg)
+    public ProcessPaymentFunction(
+        IPaymentService paymentService,
+        ILogger<ProcessPaymentFunction> logger)
     {
-        _http = f.CreateClient();
-        _log = lf.CreateLogger<ProcessPaymentFunction>();
-        _apiBase = cfg["PaymentsApi:BaseUrl"]!;
-        _internalToken = cfg["PaymentsApi:InternalToken"]!;
+        _paymentService = paymentService;
+        _logger = logger;
     }
 
     [Function("ProcessPaymentFunction")]
-    public async Task Run([QueueTrigger("payments-requests", Connection = "AzureWebJobsStorage")] string message)
+    public async Task Run(
+        [QueueTrigger("payments-requests", Connection = "AzureWebJobsStorage")] string message,
+        CancellationToken cancellationToken)
     {
-        _log.LogInformation("Processing message: {message}", message);
-        var payload = System.Text.Json.JsonSerializer.Deserialize<PaymentRequestedMessage>(message)!;
+        try
+        {
+            _logger.LogInformation("Iniciando processamento da mensagem da fila");
+            
+            var paymentMessage = JsonSerializer.Deserialize<PaymentRequestedMessage>(message);
+            if (paymentMessage == null)
+            {
+                _logger.LogError("Falha ao deserializar mensagem da fila: {Message}", message);
+                return;
+            }
 
-        // TODO: lógica real. Aqui simulamos sucesso.
-        var callback = $"{_apiBase}/internal/payments/{payload.PaymentId}/mark-processed";
-        var req = new HttpRequestMessage(HttpMethod.Post, callback);
-        req.Headers.Add("x-internal-token", _internalToken);
-        req.Content = JsonContent.Create(new { success = true });
+            _logger.LogInformation("Processando pagamento {PaymentId} para usuário {UserId}", 
+                paymentMessage.PaymentId, paymentMessage.UserId);
 
-        var resp = await _http.SendAsync(req);
-        resp.EnsureSuccessStatusCode();
-        _log.LogInformation("Payment {id} marked processed.", payload.PaymentId);
+            var success = await _paymentService.ProcessPaymentAsync(paymentMessage, cancellationToken);
+            
+            if (success)
+            {
+                _logger.LogInformation("Pagamento {PaymentId} processado com sucesso", paymentMessage.PaymentId);
+            }
+            else
+            {
+                _logger.LogWarning("Falha no processamento do pagamento {PaymentId}", paymentMessage.PaymentId);
+                // TODO: Implementar dead letter queue ou retry logic
+            }
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(ex, "Erro ao deserializar mensagem da fila: {Message}", message);
+            // TODO: Implementar dead letter queue para mensagens inválidas
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Erro inesperado ao processar mensagem da fila: {Message}", message);
+            // TODO: Implementar dead letter queue para mensagens com erro
+        }
     }
 }
-
-public record PaymentRequestedMessage(Guid PaymentId, Guid UserId, Guid GameId, decimal Amount, string Currency);
