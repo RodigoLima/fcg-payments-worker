@@ -1,17 +1,39 @@
-name: ci
+name: CI
+
 on:
   pull_request:
+    branches: [ "main" ]
   push:
     branches: [ "main" ]
+
 jobs:
-  build_test:
+  build-and-test:
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with: { dotnet-version: "8.0.x" }
-      - run: dotnet restore
-      - run: dotnet build -c Release --no-restore
-      - run: dotnet publish ./src/FCGPagamentos.Worker/FCGPagamentos.Worker.csproj -c Release -o ./out/func
-      - uses: actions/upload-artifact@v4
-        with: { name: func-publish, path: ./out/func }
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+          
+      - name: Restore dependencies
+        run: dotnet restore ./FCGPagamentos.Worker/FCGPagamentos_Worker.csproj
+        
+      - name: Build project
+        run: dotnet build ./FCGPagamentos.Worker/FCGPagamentos_Worker.csproj -c Release --no-restore
+        
+      - name: Run tests
+        run: dotnet test ./FCGPagamentos.Worker/FCGPagamentos_Worker.csproj -c Release --no-build --verbosity normal
+        
+      - name: Publish application
+        run: dotnet publish ./FCGPagamentos.Worker/FCGPagamentos_Worker.csproj -c Release -o ./out/func --no-build
+        
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: func-publish
+          path: ./out/func
+          retention-days: 1
