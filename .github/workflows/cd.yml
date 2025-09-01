@@ -19,11 +19,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
-          name: func-publish
-          path: ./out/func
+          dotnet-version: "8.0.x"
+          
+      - name: Restore dependencies
+        run: dotnet restore ./FCGPagamentos.Worker/FCGPagamentos_Worker.csproj
+        
+      - name: Build project
+        run: dotnet build ./FCGPagamentos.Worker/FCGPagamentos_Worker.csproj -c Release --no-restore
+        
+      - name: Publish application
+        run: dotnet publish ./FCGPagamentos.Worker/FCGPagamentos_Worker.csproj -c Release -o ./out/func --no-build
           
       - name: Azure Login
         uses: azure/login@v2
