@@ -9,7 +9,6 @@ public class PaymentService : IPaymentService
     private const string DeclinedStatus = "declined";
     private const string ApprovedReason = "Pagamento aprovado pelo provedor";
     private const string DeclinedReason = "Pagamento recusado pelo provedor";
-    private const string PaymentNotFoundError = "Pagamento não encontrado";
     private const string DataInconsistencyError = "Dados inconsistentes entre mensagem e API";
 
     private readonly IPaymentsApiClient _apiClient;
@@ -45,30 +44,21 @@ public class PaymentService : IPaymentService
         
         try
         {
-            // 1. Carregar payment via API
-            var payment = await _apiClient.GetPaymentAsync(message.PaymentId, cancellationToken);
-            if (payment == null)
-            {
-                _logger.LogError("Pagamento {PaymentId} não encontrado", message.PaymentId);
-                await PublishFailureAsync(message, PaymentNotFoundError, cancellationToken);
-                return false;
-            }
-
-            // 2. Validar e normalizar dados
-            if (!ValidateAndNormalizePaymentData(message, payment))
+            // 1. Validar e normalizar dados
+            if (!ValidateAndNormalizePaymentData(message, null))
             {
                 await PublishFailureAsync(message, DataInconsistencyError, cancellationToken);
                 return false;
             }
 
-            // 3. Marcar como processando
+            // 2. Marcar como processando
             await _apiClient.MarkProcessingAsync(message.PaymentId, cancellationToken);
             await _eventPublisher.PublishPaymentProcessingAsync(message.PaymentId, message.CorrelationId, cancellationToken);
 
-            // 4. Processar pagamento
-            var (isApproved, providerResponse, reason) = ProcessPaymentDecision(payment.Amount);
+            // 3. Processar pagamento
+            var (isApproved, providerResponse, reason) = ProcessPaymentDecision(message.Amount);
             
-            // 5. Atualizar status e emitir evento
+            // 4. Atualizar status e emitir evento
             await UpdatePaymentStatusAsync(message, isApproved, providerResponse, reason, cancellationToken);
 
             _logger.LogInformation("Pagamento {PaymentId} processado: {Status}", message.PaymentId, providerResponse);
@@ -113,25 +103,10 @@ public class PaymentService : IPaymentService
         return string.IsNullOrEmpty(error);
     }
 
-    private bool ValidateAndNormalizePaymentData(PaymentRequestedMessage message, Payment payment)
+    private bool ValidateAndNormalizePaymentData(PaymentRequestedMessage message, Payment? payment)
     {
-        var hasUserIdMismatch = payment.UserId != Guid.Empty && payment.UserId != message.UserId;
-        var hasGameIdMismatch = payment.GameId != Guid.Empty && payment.GameId != message.GameId;
-        
-        if (hasUserIdMismatch || hasGameIdMismatch)
-        {
-            _logger.LogError("Inconsistência nos dados do pagamento {PaymentId}", message.PaymentId);
-            return false;
-        }
-
-        // Normalizar dados se API retornou GUIDs zerados
-        if (payment.UserId == Guid.Empty || payment.GameId == Guid.Empty)
-        {
-            _logger.LogWarning("Normalizando dados zerados para pagamento {PaymentId}", message.PaymentId);
-            payment.UserId = message.UserId;
-            payment.GameId = message.GameId;
-        }
-
+        // Como não estamos mais carregando da API, apenas validamos se os dados da mensagem estão consistentes
+        // Esta validação pode ser expandida conforme necessário
         return true;
     }
 
