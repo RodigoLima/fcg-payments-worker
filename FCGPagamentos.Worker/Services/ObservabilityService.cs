@@ -29,16 +29,16 @@ public class ObservabilityService : IObservabilityService
         return activity;
     }
 
-    public void TrackPostgresDependency(string operation, string query, TimeSpan duration, bool success)
+    public void TrackApiDependency(string operation, string endpoint, TimeSpan duration, bool success)
     {
         var dependency = new DependencyTelemetry
         {
-            Type = "PostgreSQL",
-            Name = $"PostgreSQL {operation}",
-            Data = query,
+            Type = "HTTP",
+            Name = $"Payments API {operation}",
+            Data = endpoint,
             Duration = duration,
             Success = success,
-            Target = "postgresql"
+            Target = "payments-api"
         };
 
         _telemetryClient.TrackDependency(dependency);

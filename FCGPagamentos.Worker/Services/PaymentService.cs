@@ -5,18 +5,18 @@ namespace FCGPagamentos.Worker.Services;
 
 public class PaymentService : IPaymentService
 {
-    private readonly IPaymentRepository _paymentRepository;
+    private readonly IPaymentsApiClient _apiClient;
     private readonly IEventPublisher _eventPublisher;
     private readonly IObservabilityService _observabilityService;
     private readonly ILogger<PaymentService> _logger;
 
     public PaymentService(
-        IPaymentRepository paymentRepository,
+        IPaymentsApiClient apiClient,
         IEventPublisher eventPublisher,
         IObservabilityService observabilityService,
         ILogger<PaymentService> logger)
     {
-        _paymentRepository = paymentRepository;
+        _apiClient = apiClient;
         _eventPublisher = eventPublisher;
         _observabilityService = observabilityService;
         _logger = logger;
@@ -35,16 +35,17 @@ public class PaymentService : IPaymentService
             _logger.LogInformation("Iniciando processamento do pagamento {PaymentId} (CorrelationId: {CorrelationId})", 
                 message.PaymentId, message.CorrelationId);
 
-            // 1. Carregar payment do PostgreSQL
-            var payment = await _paymentRepository.GetByIdAsync(message.PaymentId, cancellationToken);
+            // 1. Carregar payment via API
+            var payment = await _apiClient.GetPaymentAsync(message.PaymentId, cancellationToken);
             if (payment == null)
             {
-                _logger.LogError("Pagamento {PaymentId} não encontrado no banco de dados", message.PaymentId);
+                _logger.LogError("Pagamento {PaymentId} não encontrado na API", message.PaymentId);
                 await _eventPublisher.PublishPaymentFailedAsync(message.PaymentId, message.CorrelationId, "Pagamento não encontrado", cancellationToken);
                 return false;
             }
 
-            // 2. Gravar evento PaymentProcessing
+            // 2. Marcar como processando via API
+            await _apiClient.MarkProcessingAsync(message.PaymentId, cancellationToken);
             await _eventPublisher.PublishPaymentProcessingAsync(message.PaymentId, message.CorrelationId, cancellationToken);
 
             // 3. Simular provedor (valor par = aprovado, ímpar = recusado)
@@ -55,16 +56,16 @@ public class PaymentService : IPaymentService
             _logger.LogInformation("Simulação do provedor para pagamento {PaymentId}: {Result} (valor: {Amount})", 
                 message.PaymentId, providerResponse, payment.Amount);
 
-            // 4. Gravar evento PaymentApproved ou PaymentDeclined
+            // 4. Atualizar status via API e emitir evento
             if (isApproved)
             {
+                await _apiClient.MarkApprovedAsync(message.PaymentId, providerResponse, cancellationToken);
                 await _eventPublisher.PublishPaymentApprovedAsync(message.PaymentId, message.CorrelationId, providerResponse, cancellationToken);
-                await _paymentRepository.UpdateStatusAsync(message.PaymentId, "APPROVED", providerResponse, null, cancellationToken);
             }
             else
             {
+                await _apiClient.MarkDeclinedAsync(message.PaymentId, providerResponse, reason, cancellationToken);
                 await _eventPublisher.PublishPaymentDeclinedAsync(message.PaymentId, message.CorrelationId, reason, cancellationToken);
-                await _paymentRepository.UpdateStatusAsync(message.PaymentId, "DECLINED", providerResponse, reason, cancellationToken);
             }
 
             _logger.LogInformation("Pagamento {PaymentId} processado com sucesso: {Status}", message.PaymentId, providerResponse);
@@ -75,9 +76,9 @@ public class PaymentService : IPaymentService
             _logger.LogError(ex, "Erro inesperado ao processar pagamento {PaymentId} (CorrelationId: {CorrelationId})", 
                 message.PaymentId, message.CorrelationId);
             
-            // 5. Gravar evento PaymentFailed em caso de erro
+            // 5. Marcar como falhou via API e emitir evento
+            await _apiClient.MarkFailedAsync(message.PaymentId, ex.Message, cancellationToken);
             await _eventPublisher.PublishPaymentFailedAsync(message.PaymentId, message.CorrelationId, ex.Message, cancellationToken);
-            await _paymentRepository.UpdateStatusAsync(message.PaymentId, "FAILED", null, ex.Message, cancellationToken);
             
             return false;
         }
