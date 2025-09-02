@@ -40,14 +40,25 @@ public class ProcessPaymentFunction
                 return;
             }
 
-            // Tentar deserializar a mensagem
+            // Tentar deserializar a mensagem usando o DTO
             try
             {
-                paymentMessage = JsonSerializer.Deserialize<PaymentRequestedMessage>(message);
+                var messageDto = JsonSerializer.Deserialize<PaymentRequestedMessageDto>(message);
+                if (messageDto == null)
+                {
+                    _logger.LogError("Falha ao deserializar mensagem da fila - DTO é nulo. Mensagem: {Message}", message);
+                    return;
+                }
+                paymentMessage = messageDto.ToPaymentRequestedMessage();
             }
             catch (JsonException ex)
             {
                 _logger.LogError(ex, "Erro ao deserializar mensagem da fila. Mensagem: {Message}", message);
+                return;
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogError(ex, "Erro ao converter campos GUID da mensagem da fila. Mensagem: {Message}", message);
                 return;
             }
 
@@ -58,8 +69,8 @@ public class ProcessPaymentFunction
             }
 
             // Log detalhado da mensagem recebida para debug
-            _logger.LogDebug("Mensagem deserializada: PaymentId={PaymentId}, CorrelationId={CorrelationId}, UserId={UserId}, GameId={GameId}, Amount={Amount}, Currency={Currency}", 
-                paymentMessage.PaymentId, paymentMessage.CorrelationId, paymentMessage.UserId, paymentMessage.GameId, paymentMessage.Amount, paymentMessage.Currency);
+            _logger.LogDebug("Mensagem deserializada: PaymentId={PaymentId}, CorrelationId={CorrelationId}, UserId={UserId}, GameId={GameId}, Amount={Amount}, Currency={Currency}, PaymentMethod={PaymentMethod}, OccurredAt={OccurredAt}, Version={Version}", 
+                paymentMessage.PaymentId, paymentMessage.CorrelationId, paymentMessage.UserId, paymentMessage.GameId, paymentMessage.Amount, paymentMessage.Currency, paymentMessage.PaymentMethod, paymentMessage.OccurredAt, paymentMessage.Version);
 
             // Configurar correlation ID para traces distribuídos
             _observabilityService.SetCorrelationId(paymentMessage.CorrelationId);

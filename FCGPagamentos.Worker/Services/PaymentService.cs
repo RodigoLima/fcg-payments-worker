@@ -54,13 +54,31 @@ public class PaymentService : IPaymentService
                 return false;
             }
 
-            // Validar consistência dos dados
-            if (payment.UserId != message.UserId || payment.GameId != message.GameId)
+            // Log detalhado dos dados para debug
+            _logger.LogDebug("Dados do pagamento {PaymentId}: Mensagem - UserId={MessageUserId}, GameId={MessageGameId}. API - UserId={ApiUserId}, GameId={ApiGameId}", 
+                message.PaymentId, message.UserId, message.GameId, payment.UserId, payment.GameId);
+
+            // Validar consistência dos dados (mais flexível)
+            var hasUserIdMismatch = payment.UserId != Guid.Empty && payment.UserId != message.UserId;
+            var hasGameIdMismatch = payment.GameId != Guid.Empty && payment.GameId != message.GameId;
+            
+            if (hasUserIdMismatch || hasGameIdMismatch)
             {
                 _logger.LogError("Inconsistência nos dados do pagamento {PaymentId}. Mensagem: UserId={MessageUserId}, GameId={MessageGameId}. API: UserId={ApiUserId}, GameId={ApiGameId}", 
                     message.PaymentId, message.UserId, message.GameId, payment.UserId, payment.GameId);
                 await _eventPublisher.PublishPaymentFailedAsync(message.PaymentId, message.CorrelationId, "Dados inconsistentes entre mensagem e API", cancellationToken);
                 return false;
+            }
+
+            // Se a API retornou GUIDs zerados, usar os dados da mensagem (cenário comum em desenvolvimento/teste)
+            if (payment.UserId == Guid.Empty || payment.GameId == Guid.Empty)
+            {
+                _logger.LogWarning("API retornou GUIDs zerados para pagamento {PaymentId}. Usando dados da mensagem: UserId={MessageUserId}, GameId={MessageGameId}", 
+                    message.PaymentId, message.UserId, message.GameId);
+                
+                // Atualizar os dados do payment com os da mensagem para continuar o processamento
+                payment.UserId = message.UserId;
+                payment.GameId = message.GameId;
             }
 
             // 2. Marcar como processando via API
