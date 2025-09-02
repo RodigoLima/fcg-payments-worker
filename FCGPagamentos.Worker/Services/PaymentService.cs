@@ -24,6 +24,16 @@ public class PaymentService : IPaymentService
 
     public async Task<bool> ProcessPaymentAsync(PaymentRequestedMessage message, CancellationToken cancellationToken = default)
     {
+        // Validar mensagem
+
+        _logger.LogInformation("Mensagem recebida: {Message}", message);
+        if (!ValidateMessage(message, out var validationError))
+        {
+            _logger.LogError("Mensagem inválida recebida: {Error}", validationError);
+            await _eventPublisher.PublishPaymentFailedAsync(message.PaymentId, message.CorrelationId, validationError, cancellationToken);
+            return false;
+        }
+
         // Configurar correlation ID para traces distribuídos
         _observabilityService.SetCorrelationId(message.CorrelationId);
         
@@ -32,8 +42,8 @@ public class PaymentService : IPaymentService
         
         try
         {
-            _logger.LogInformation("Iniciando processamento do pagamento {PaymentId} (CorrelationId: {CorrelationId})", 
-                message.PaymentId, message.CorrelationId);
+            _logger.LogInformation("Iniciando processamento do pagamento {PaymentId} (CorrelationId: {CorrelationId}) para usuário {UserId} no jogo {GameId}", 
+                message.PaymentId, message.CorrelationId, message.UserId, message.GameId);
 
             // 1. Carregar payment via API
             var payment = await _apiClient.GetPaymentAsync(message.PaymentId, cancellationToken);
@@ -41,6 +51,15 @@ public class PaymentService : IPaymentService
             {
                 _logger.LogError("Pagamento {PaymentId} não encontrado na API", message.PaymentId);
                 await _eventPublisher.PublishPaymentFailedAsync(message.PaymentId, message.CorrelationId, "Pagamento não encontrado", cancellationToken);
+                return false;
+            }
+
+            // Validar consistência dos dados
+            if (payment.UserId != message.UserId || payment.GameId != message.GameId)
+            {
+                _logger.LogError("Inconsistência nos dados do pagamento {PaymentId}. Mensagem: UserId={MessageUserId}, GameId={MessageGameId}. API: UserId={ApiUserId}, GameId={ApiGameId}", 
+                    message.PaymentId, message.UserId, message.GameId, payment.UserId, payment.GameId);
+                await _eventPublisher.PublishPaymentFailedAsync(message.PaymentId, message.CorrelationId, "Dados inconsistentes entre mensagem e API", cancellationToken);
                 return false;
             }
 
@@ -53,8 +72,8 @@ public class PaymentService : IPaymentService
             var providerResponse = isApproved ? "approved" : "declined";
             var reason = isApproved ? "Pagamento aprovado pelo provedor" : "Pagamento recusado pelo provedor";
 
-            _logger.LogInformation("Simulação do provedor para pagamento {PaymentId}: {Result} (valor: {Amount})", 
-                message.PaymentId, providerResponse, payment.Amount);
+            _logger.LogInformation("Simulação do provedor para pagamento {PaymentId}: {Result} (valor: {Amount}) para usuário {UserId} no jogo {GameId}", 
+                message.PaymentId, providerResponse, payment.Amount, payment.UserId, payment.GameId);
 
             // 4. Atualizar status via API e emitir evento
             if (isApproved)
@@ -68,13 +87,14 @@ public class PaymentService : IPaymentService
                 await _eventPublisher.PublishPaymentDeclinedAsync(message.PaymentId, message.CorrelationId, reason, cancellationToken);
             }
 
-            _logger.LogInformation("Pagamento {PaymentId} processado com sucesso: {Status}", message.PaymentId, providerResponse);
+            _logger.LogInformation("Pagamento {PaymentId} processado com sucesso: {Status} para usuário {UserId} no jogo {GameId}", 
+                message.PaymentId, providerResponse, payment.UserId, payment.GameId);
             return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Erro inesperado ao processar pagamento {PaymentId} (CorrelationId: {CorrelationId})", 
-                message.PaymentId, message.CorrelationId);
+            _logger.LogError(ex, "Erro inesperado ao processar pagamento {PaymentId} (CorrelationId: {CorrelationId}) para usuário {UserId} no jogo {GameId}", 
+                message.PaymentId, message.CorrelationId, message.UserId, message.GameId);
             
             // 5. Marcar como falhou via API e emitir evento
             await _apiClient.MarkFailedAsync(message.PaymentId, ex.Message, cancellationToken);
@@ -88,5 +108,54 @@ public class PaymentService : IPaymentService
     {
         // Regra simples: valor par = aprovado, ímpar = recusado
         return (int)(amount * 100) % 2 == 0;
+    }
+
+    private static bool ValidateMessage(PaymentRequestedMessage message, out string error)
+    {
+        error = string.Empty;
+
+        if (message == null)
+        {
+            error = "Mensagem é nula";
+            return false;
+        }
+
+        if (message.PaymentId == Guid.Empty)
+        {
+            error = "PaymentId não pode ser vazio";
+            return false;
+        }
+
+        if (message.CorrelationId == Guid.Empty)
+        {
+            error = "CorrelationId não pode ser vazio";
+            return false;
+        }
+
+        if (message.UserId == Guid.Empty)
+        {
+            error = "UserId não pode ser vazio";
+            return false;
+        }
+
+        if (message.GameId == Guid.Empty)
+        {
+            error = "GameId não pode ser vazio";
+            return false;
+        }
+
+        if (message.Amount <= 0)
+        {
+            error = "Amount deve ser maior que zero";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(message.Currency))
+        {
+            error = "Currency não pode ser vazio";
+            return false;
+        }
+
+        return true;
     }
 }
