@@ -16,8 +16,5 @@ builder.Services
     .AddApplicationInsightsTelemetryWorkerService()
     .ConfigureFunctionsApplicationInsights();
 
-// Configurar HttpClient
-builder.Services.AddHttpClient();
-
 var app = builder.Build();
 app.Run();

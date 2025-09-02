@@ -9,19 +9,22 @@ namespace FCGPagamentos.Worker.Functions;
 public class ProcessPaymentFunction
 {
     private readonly IPaymentService _paymentService;
+    private readonly IObservabilityService _observabilityService;
     private readonly ILogger<ProcessPaymentFunction> _logger;
 
     public ProcessPaymentFunction(
         IPaymentService paymentService,
+        IObservabilityService observabilityService,
         ILogger<ProcessPaymentFunction> logger)
     {
         _paymentService = paymentService;
+        _observabilityService = observabilityService;
         _logger = logger;
     }
 
     [Function("ProcessPaymentFunction")]
     public async Task Run(
-        [QueueTrigger("payments-requests", Connection = "AzureWebJobsStorage")] string message,
+        [QueueTrigger("payments-to-process", Connection = "AzureWebJobsStorage")] string message,
         CancellationToken cancellationToken)
     {
         try
@@ -35,8 +38,11 @@ public class ProcessPaymentFunction
                 return;
             }
 
-            _logger.LogInformation("Processando pagamento {PaymentId} para usuário {UserId}", 
-                paymentMessage.PaymentId, paymentMessage.UserId);
+            // Configurar correlation ID para traces distribuídos
+            _observabilityService.SetCorrelationId(paymentMessage.CorrelationId);
+
+            _logger.LogInformation("Processando pagamento {PaymentId} (CorrelationId: {CorrelationId}) para usuário {UserId}", 
+                paymentMessage.PaymentId, paymentMessage.CorrelationId, paymentMessage.UserId);
 
             var success = await _paymentService.ProcessPaymentAsync(paymentMessage, cancellationToken);
             

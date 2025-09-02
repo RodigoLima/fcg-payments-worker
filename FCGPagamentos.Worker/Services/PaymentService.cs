@@ -1,86 +1,91 @@
-using System.Net.Http.Json;
-using FCGPagamentos.Worker.Configuration;
 using FCGPagamentos.Worker.Models;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace FCGPagamentos.Worker.Services;
 
 public class PaymentService : IPaymentService
 {
-    private readonly HttpClient _httpClient;
+    private readonly IPaymentRepository _paymentRepository;
+    private readonly IEventPublisher _eventPublisher;
+    private readonly IObservabilityService _observabilityService;
     private readonly ILogger<PaymentService> _logger;
-    private readonly PaymentsApiOptions _options;
 
     public PaymentService(
-        IHttpClientFactory httpClientFactory,
-        ILogger<PaymentService> logger,
-        IOptions<PaymentsApiOptions> options)
+        IPaymentRepository paymentRepository,
+        IEventPublisher eventPublisher,
+        IObservabilityService observabilityService,
+        ILogger<PaymentService> logger)
     {
-        _httpClient = httpClientFactory.CreateClient("PaymentsApi");
+        _paymentRepository = paymentRepository;
+        _eventPublisher = eventPublisher;
+        _observabilityService = observabilityService;
         _logger = logger;
-        _options = options.Value;
-        
-        // Configurar timeout
-        _httpClient.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
     }
 
     public async Task<bool> ProcessPaymentAsync(PaymentRequestedMessage message, CancellationToken cancellationToken = default)
     {
+        // Configurar correlation ID para traces distribuídos
+        _observabilityService.SetCorrelationId(message.CorrelationId);
+        
+        // Iniciar activity para tracing distribuído
+        using var activity = _observabilityService.StartPaymentProcessingActivity(message.PaymentId, message.CorrelationId);
+        
         try
         {
-            _logger.LogInformation("Iniciando processamento do pagamento {PaymentId} para usuário {UserId}", 
-                message.PaymentId, message.UserId);
+            _logger.LogInformation("Iniciando processamento do pagamento {PaymentId} (CorrelationId: {CorrelationId})", 
+                message.PaymentId, message.CorrelationId);
 
-            // TODO: Implementar lógica real de processamento de pagamento
-            // Aqui simulamos o processamento
-            
-            var success = await MarkPaymentAsProcessedAsync(message.PaymentId, cancellationToken);
-            
-            if (success)
+            // 1. Carregar payment do PostgreSQL
+            var payment = await _paymentRepository.GetByIdAsync(message.PaymentId, cancellationToken);
+            if (payment == null)
             {
-                _logger.LogInformation("Pagamento {PaymentId} processado com sucesso", message.PaymentId);
-                return true;
+                _logger.LogError("Pagamento {PaymentId} não encontrado no banco de dados", message.PaymentId);
+                await _eventPublisher.PublishPaymentFailedAsync(message.PaymentId, message.CorrelationId, "Pagamento não encontrado", cancellationToken);
+                return false;
             }
-            
-            _logger.LogWarning("Falha ao marcar pagamento {PaymentId} como processado", message.PaymentId);
-            return false;
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "Erro de comunicação ao processar pagamento {PaymentId}", message.PaymentId);
-            return false;
-        }
-        catch (TaskCanceledException ex)
-        {
-            _logger.LogError(ex, "Timeout ao processar pagamento {PaymentId}", message.PaymentId);
-            return false;
+
+            // 2. Gravar evento PaymentProcessing
+            await _eventPublisher.PublishPaymentProcessingAsync(message.PaymentId, message.CorrelationId, cancellationToken);
+
+            // 3. Simular provedor (valor par = aprovado, ímpar = recusado)
+            var isApproved = SimulateProviderDecision(payment.Amount);
+            var providerResponse = isApproved ? "approved" : "declined";
+            var reason = isApproved ? "Pagamento aprovado pelo provedor" : "Pagamento recusado pelo provedor";
+
+            _logger.LogInformation("Simulação do provedor para pagamento {PaymentId}: {Result} (valor: {Amount})", 
+                message.PaymentId, providerResponse, payment.Amount);
+
+            // 4. Gravar evento PaymentApproved ou PaymentDeclined
+            if (isApproved)
+            {
+                await _eventPublisher.PublishPaymentApprovedAsync(message.PaymentId, message.CorrelationId, providerResponse, cancellationToken);
+                await _paymentRepository.UpdateStatusAsync(message.PaymentId, "APPROVED", providerResponse, null, cancellationToken);
+            }
+            else
+            {
+                await _eventPublisher.PublishPaymentDeclinedAsync(message.PaymentId, message.CorrelationId, reason, cancellationToken);
+                await _paymentRepository.UpdateStatusAsync(message.PaymentId, "DECLINED", providerResponse, reason, cancellationToken);
+            }
+
+            _logger.LogInformation("Pagamento {PaymentId} processado com sucesso: {Status}", message.PaymentId, providerResponse);
+            return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Erro inesperado ao processar pagamento {PaymentId}", message.PaymentId);
+            _logger.LogError(ex, "Erro inesperado ao processar pagamento {PaymentId} (CorrelationId: {CorrelationId})", 
+                message.PaymentId, message.CorrelationId);
+            
+            // 5. Gravar evento PaymentFailed em caso de erro
+            await _eventPublisher.PublishPaymentFailedAsync(message.PaymentId, message.CorrelationId, ex.Message, cancellationToken);
+            await _paymentRepository.UpdateStatusAsync(message.PaymentId, "FAILED", null, ex.Message, cancellationToken);
+            
             return false;
         }
     }
 
-    private async Task<bool> MarkPaymentAsProcessedAsync(Guid paymentId, CancellationToken cancellationToken)
+    private static bool SimulateProviderDecision(decimal amount)
     {
-        var callbackUrl = $"{_options.BaseUrl}/internal/payments/{paymentId}/mark-processed";
-        
-        var request = new HttpRequestMessage(HttpMethod.Post, callbackUrl);
-        request.Headers.Add("x-internal-token", _options.InternalToken);
-        request.Content = JsonContent.Create(new { success = true });
-
-        var response = await _httpClient.SendAsync(request, cancellationToken);
-        
-        if (response.IsSuccessStatusCode)
-        {
-            _logger.LogDebug("Pagamento {PaymentId} marcado como processado com sucesso", paymentId);
-            return true;
-        }
-
-        _logger.LogWarning("Falha ao marcar pagamento {PaymentId} como processado. Status: {StatusCode}", 
-            paymentId, response.StatusCode);
-        return false;
+        // Regra simples: valor par = aprovado, ímpar = recusado
+        return (int)(amount * 100) % 2 == 0;
     }
 }
