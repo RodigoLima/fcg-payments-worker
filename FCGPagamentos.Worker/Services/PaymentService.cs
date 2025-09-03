@@ -128,4 +128,70 @@ public class PaymentService : IPaymentService
             await _eventPublisher.PublishPaymentDeclinedAsync(message.PaymentId, message.CorrelationId, reason, cancellationToken);
         }
     }
+
+    public async Task<bool> CreatePaymentAsync(GamePurchaseRequestedEvent purchaseEvent, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Criando pagamento {PaymentId} para usuário {UserId}", purchaseEvent.PaymentId, purchaseEvent.UserId);
+        
+        _observabilityService.SetCorrelationId(purchaseEvent.CorrelationId);
+        using var activity = _observabilityService.StartPaymentProcessingActivity(purchaseEvent.PaymentId, purchaseEvent.CorrelationId);
+        
+        try
+        {
+            // Validar evento
+            if (!ValidatePurchaseEvent(purchaseEvent, out var validationError))
+            {
+                _logger.LogError("Evento de compra inválido: {Error}", validationError);
+                return false;
+            }
+
+            // Criar pagamento na API (API vai publicar PaymentCreated + PaymentQueued)
+            var createRequest = new CreatePaymentRequest(
+                Id: purchaseEvent.PaymentId,
+                UserId: purchaseEvent.UserId,
+                GameId: purchaseEvent.GameId,
+                Amount: purchaseEvent.Amount,
+                Currency: purchaseEvent.Currency,
+                PaymentMethod: purchaseEvent.PaymentMethod
+            );
+
+            var payment = await _apiClient.CreatePaymentAsync(createRequest, cancellationToken);
+            if (payment == null)
+            {
+                _logger.LogError("Falha ao criar pagamento {PaymentId} na API", purchaseEvent.PaymentId);
+                return false;
+            }
+
+            _logger.LogInformation("Pagamento {PaymentId} criado com sucesso", purchaseEvent.PaymentId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Erro ao criar pagamento {PaymentId}", purchaseEvent.PaymentId);
+            return false;
+        }
+    }
+
+    private static bool ValidatePurchaseEvent(GamePurchaseRequestedEvent purchaseEvent, out string error)
+    {
+        if (purchaseEvent == null)
+        {
+            error = "Evento de compra é nulo";
+            return false;
+        }
+
+        error = purchaseEvent switch
+        {
+            { PaymentId: var id } when id == Guid.Empty => "PaymentId não pode ser vazio",
+            { CorrelationId: var id } when id == Guid.Empty => "CorrelationId não pode ser vazio",
+            { UserId: var id } when id == Guid.Empty => "UserId não pode ser vazio",
+            { GameId: var id } when id == Guid.Empty => "GameId não pode ser vazio",
+            { Amount: <= 0 } => "Amount deve ser maior que zero",
+            { Currency: null or "" } => "Currency não pode ser vazio",
+            { PaymentMethod: null or "" } => "PaymentMethod não pode ser vazio",
+            _ => string.Empty
+        };
+        
+        return string.IsNullOrEmpty(error);
+    }
 }

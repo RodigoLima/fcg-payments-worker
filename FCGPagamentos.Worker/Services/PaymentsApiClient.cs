@@ -28,6 +28,36 @@ public class PaymentsApiClient : IPaymentsApiClient
         _httpClient.DefaultRequestHeaders.Add("x-internal-token", _internalToken);
     }
 
+    public async Task<Payment?> CreatePaymentAsync(CreatePaymentRequest request, CancellationToken cancellationToken = default)
+    {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var endpoint = "/internal/payments";
+        
+        try
+        {
+            var content = JsonContent.Create(request);
+            var response = await _httpClient.PostAsync($"{_baseUrl}{endpoint}", content, cancellationToken);
+            stopwatch.Stop();
+            
+            if (response.IsSuccessStatusCode)
+            {
+                _observabilityService.TrackApiDependency("POST", endpoint, stopwatch.Elapsed, true);
+                return await response.Content.ReadFromJsonAsync<Payment>(cancellationToken: cancellationToken);
+            }
+            
+            _observabilityService.TrackApiDependency("POST", endpoint, stopwatch.Elapsed, false);
+            _logger.LogWarning("Falha ao criar pagamento. Status: {StatusCode}", response.StatusCode);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            _observabilityService.TrackApiDependency("POST", endpoint, stopwatch.Elapsed, false);
+            _logger.LogError(ex, "Erro ao criar pagamento");
+            throw;
+        }
+    }
+
     public async Task<Payment?> GetPaymentAsync(Guid paymentId, CancellationToken cancellationToken = default)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();

@@ -4,6 +4,7 @@ namespace FCGPagamentos.Worker.Services;
 
 public interface IPaymentsApiClient
 {
+    Task<Payment?> CreatePaymentAsync(CreatePaymentRequest request, CancellationToken cancellationToken = default);
     Task<Payment?> GetPaymentAsync(Guid paymentId, CancellationToken cancellationToken = default);
     Task<bool> MarkProcessingAsync(Guid paymentId, CancellationToken cancellationToken = default);
     Task<bool> MarkApprovedAsync(Guid paymentId, string providerResponse, CancellationToken cancellationToken = default);
