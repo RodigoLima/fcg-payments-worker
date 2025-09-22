@@ -172,12 +172,13 @@ public class PaymentService : IPaymentService
 
             // Criar pagamento na API (API vai publicar PaymentCreated + PaymentQueued)
             var createRequest = new CreatePaymentRequest(
-                Id: purchaseEvent.PaymentId,
+                PaymentId: purchaseEvent.PaymentId,
                 UserId: purchaseEvent.UserId,
                 GameId: purchaseEvent.GameId,
                 Amount: purchaseEvent.Amount,
                 Currency: purchaseEvent.Currency,
-                PaymentMethod: purchaseEvent.PaymentMethod
+                PaymentMethod: purchaseEvent.PaymentMethod,
+                CorrelationId: purchaseEvent.CorrelationId
             );
 
             var payment = await _apiClient.CreatePaymentAsync(createRequest, cancellationToken);

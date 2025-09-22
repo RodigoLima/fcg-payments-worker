@@ -1,10 +1,11 @@
 namespace FCGPagamentos.Worker.Models;
 
 public record CreatePaymentRequest(
-    Guid Id,
+    Guid PaymentId,
     Guid UserId,
     Guid GameId,
     decimal Amount,
     string Currency,
-    string PaymentMethod
+    string PaymentMethod,
+    Guid CorrelationId
 );
