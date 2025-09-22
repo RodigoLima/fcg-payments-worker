@@ -1,15 +1,19 @@
 using FCGPagamentos.Worker.Models;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
+using Azure.Storage.Queues;
 
 namespace FCGPagamentos.Worker.Services;
 
 public class EventPublisher : IEventPublisher
 {
     private readonly ILogger<EventPublisher> _logger;
+    private readonly IQueueClientFactory _queueClientFactory;
 
-    public EventPublisher(ILogger<EventPublisher> logger)
+    public EventPublisher(ILogger<EventPublisher> logger, IQueueClientFactory queueClientFactory)
     {
         _logger = logger;
+        _queueClientFactory = queueClientFactory;
     }
 
     public async Task PublishPaymentProcessingAsync(Guid paymentId, Guid correlationId, CancellationToken cancellationToken = default)
@@ -32,6 +36,40 @@ public class EventPublisher : IEventPublisher
         await PublishEventAsync("PaymentFailed", paymentId, correlationId, reason, cancellationToken);
     }
 
+    public async Task PublishGamePurchaseCompletedAsync(GamePurchaseCompletedEvent completedEvent, CancellationToken cancellationToken = default)
+    {
+        await PublishToQueueAsync("game-purchase-completed", completedEvent, cancellationToken);
+    }
+
+    // Método genérico para publicar em qualquer fila
+    public async Task PublishToQueueAsync<T>(string queueName, T eventData, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogInformation("Publicando evento na fila {QueueName}", queueName);
+
+            // Serializar evento para JSON
+            var eventJson = JsonSerializer.Serialize(eventData, new JsonSerializerOptions 
+            { 
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = false // Compacto para filas
+            });
+
+            // Obter client da fila
+            var queueClient = _queueClientFactory.GetQueueClient(queueName);
+            
+            // Publicar na fila
+            await queueClient.SendMessageAsync(eventJson, cancellationToken);
+            
+            _logger.LogInformation("Evento publicado com sucesso na fila {QueueName}", queueName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Erro ao publicar evento na fila {QueueName}", queueName);
+            throw;
+        }
+    }
+
     private async Task PublishEventAsync(string eventType, Guid paymentId, Guid correlationId, string? data, CancellationToken cancellationToken)
     {
         try
@@ -41,7 +79,6 @@ public class EventPublisher : IEventPublisher
             _logger.LogInformation("Publicando evento {EventType}: PaymentId={PaymentId}, CorrelationId={CorrelationId}", 
                 eventType, paymentId, correlationId);
 
-            // TODO: Implementar publicação real do evento (Service Bus, Event Grid, etc.)
             // Por enquanto, apenas logamos o evento
             _logger.LogInformation("Evento publicado: {Event}", paymentEvent);
             

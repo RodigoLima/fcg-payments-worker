@@ -61,6 +61,9 @@ public class PaymentService : IPaymentService
             // 4. Atualizar status e emitir evento
             await UpdatePaymentStatusAsync(message, isApproved, providerResponse, reason, cancellationToken);
 
+            // 5. Sempre publicar GamePurchaseCompleted independente do resultado
+            await PublishGamePurchaseCompletedAsync(message, isApproved, providerResponse, reason, cancellationToken);
+
             _logger.LogInformation("Pagamento {PaymentId} processado: {Status}", message.PaymentId, providerResponse);
             return true;
         }
@@ -69,6 +72,10 @@ public class PaymentService : IPaymentService
             _logger.LogError(ex, "Erro ao processar pagamento {PaymentId}", message.PaymentId);
             await _apiClient.MarkFailedAsync(message.PaymentId, ex.Message, cancellationToken);
             await PublishFailureAsync(message, ex.Message, cancellationToken);
+            
+            // Sempre publicar GamePurchaseCompleted mesmo em caso de falha
+            await PublishGamePurchaseCompletedAsync(message, false, "failed", ex.Message, cancellationToken);
+            
             return false;
         }
     }
@@ -113,6 +120,24 @@ public class PaymentService : IPaymentService
     private async Task PublishFailureAsync(PaymentRequestedMessage message, string reason, CancellationToken cancellationToken)
     {
         await _eventPublisher.PublishPaymentFailedAsync(message.PaymentId, message.CorrelationId, reason, cancellationToken);
+    }
+
+    private async Task PublishGamePurchaseCompletedAsync(PaymentRequestedMessage message, bool isApproved, string status, string reason, CancellationToken cancellationToken)
+    {
+        var completedEvent = new GamePurchaseCompletedEvent(
+            PaymentId: message.PaymentId,
+            UserId: message.UserId,
+            GameId: message.GameId,
+            Amount: message.Amount,
+            Currency: message.Currency,
+            PaymentMethod: message.PaymentMethod,
+            Status: status,
+            Reason: reason,
+            CorrelationId: message.CorrelationId,
+            CompletedAt: DateTime.UtcNow
+        );
+
+        await _eventPublisher.PublishGamePurchaseCompletedAsync(completedEvent, cancellationToken);
     }
 
     private async Task UpdatePaymentStatusAsync(PaymentRequestedMessage message, bool isApproved, string providerResponse, string reason, CancellationToken cancellationToken)
