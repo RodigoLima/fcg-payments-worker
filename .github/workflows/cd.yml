@@ -1,56 +1,47 @@
 name: CD
 
 on:
-  # Dispara manualmente
   workflow_dispatch:
-  # Dispara após o CI (Build/Testes) ser concluído
   workflow_run:
     workflows: ["CI"]
     branches: [ "main" ]
     types: [completed]
 
-env:
-  # Recursos do Azure
-  RESOURCE_GROUP: rg-fcg-payments
-  CONTAINER_APP_NAME: fnc-fcg-payments
-  APP_SOURCE_PATH: ./FCGPagamentos.Worker
-  
-  # VALORES ANTERIORES REMOVIDOS PARA FORÇAR FLUXO NATIVO DE SOURCE DEPLOY
-  # ACR_LOGIN_SERVER_URL: livelyisland-8acf786d.brazilsouth.azurecontainerapps.io
-  # IMAGE_NAME_BASE: livelyisland-8acf786d.brazilsouth.azurecontainerapps.io/fcg-payments-worker-image
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
-    # Configuração de seguranca OIDC (Identidade Atribuída pelo Usuário)
+
     permissions:
       id-token: write
       contents: read
-      
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # PASSO 1: AUTENTICAÇÃO OIDC (UAMI)
-      - name: Azure Login (OIDC - UAMI)
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+          
+      - name: Restore dependencies
+        run: dotnet restore ./FCGPagamentos.Worker/FCGPagamentos_Worker.csproj
+        
+      - name: Build project
+        run: dotnet build ./FCGPagamentos.Worker/FCGPagamentos_Worker.csproj -c Release --no-restore
+        
+      - name: Publish application
+        run: dotnet publish ./FCGPagamentos.Worker/FCGPagamentos_Worker.csproj -c Release -o ./out/func --no-build
+
+      - name: Azure Login
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          
-      # PASSO 2 (CORRIGIDO): DEPLOY NATIVO FORÇANDO O AZURE BUILD
-      # Isso usa a UAMI para dar permissão de upload e aciona o ACR Build Service,
-      # resolvendo o problema de "no such host" ao construir DENTRO do Azure.
-      - name: Deploy Function to Container Apps (Azure Build)
-        uses: azure/container-apps-deploy-action@v1
+
+      - name: Deploy to Azure Functions
+        uses: Azure/functions-action@v1
         with:
-          containerAppName: ${{ env.CONTAINER_APP_NAME }}
-          resourceGroup: ${{ env.RESOURCE_GROUP }}
-          
-          # Parametro mais nativo para deploy de código-fonte
-          appSourcePath: ${{ env.APP_SOURCE_PATH }}
-          
-          # Imagem de placeholder. O Azure Build a substituirá, mas o ACA exige uma imagem válida.
-          imageToBuild: mcr.microsoft.com/azure-functions/dotnet:4-dotnet6-appservice
+          app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }} 
+          package: ./out/func
