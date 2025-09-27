@@ -1,34 +1,33 @@
 name: CD
 
 on:
+  # Dispara manualmente
   workflow_dispatch:
+  # Dispara após o CI (Build/Testes) ser concluído
   workflow_run:
     workflows: ["CI"]
     branches: [ "main" ]
     types: [completed]
 
 env:
-  # Variáveis de Ambiente para o Deploy
+  # Nomes dos recursos criados na Azure
   RESOURCE_GROUP: rg-fcg-payments
   CONTAINER_APP_NAME: fnc-fcg-payments
-  # Este caminho deve apontar para a PASTA que contém o seu Dockerfile e o .csproj
+  # Caminho relativo à raiz do repositório onde o Dockerfile e o .csproj estão
   APP_SOURCE_PATH: ./FCGPagamentos.Worker
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     
+    # Configuração de seguranca OIDC (Identidade Atribuída pelo Usuário)
     permissions:
       id-token: write
-      contents: read # Necessário para o checkout
+      contents: read
       
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
-      # ATENÇÃO: Os passos de DOTNET BUILD, RESTORE e PUBLISH são INÚTEIS aqui.
-      # O 'azure/container-apps-deploy-action' fará o build DENTRO do contêiner.
-      # Removendo esses passos, você economiza tempo e recursos no seu pipeline.
 
       - name: Azure Login (OIDC - UAMI)
         uses: azure/login@v2
@@ -37,24 +36,13 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           
-      # 1. Instala a extensão Containerapp
-      - name: Install Container Apps Extension
-        run: az extension add --name containerapp --upgrade
-
-      # 2. Deploy para Azure Container Apps
-      # Esta AÇÃO faz o build, push para o ACR gerenciado e a criação da nova revisão.
-      - name: Deploy to Azure Container Apps
+      # 1. Deploy para Azure Container Apps
+      # Esta única ação faz o build do Dockerfile, push para o ACR e a atualização do Container App.
+      - name: Deploy Function to Container Apps
         uses: azure/container-apps-deploy-action@v1
         with:
-          # Grupo e Nome da Function App no ACA
           containerAppName: ${{ env.CONTAINER_APP_NAME }}
           resourceGroup: ${{ env.RESOURCE_GROUP }}
-          
-          # Caminho do código-fonte onde o Dockerfile deve estar
           appSourcePath: ${{ env.APP_SOURCE_PATH }}
-          
-          # Para garantir que o build .NET seja feito corretamente
-          buildContainerInAzure: true 
-          # O build será feito no Azure usando o ACR gerenciado.
-          
-      # O passo 'Deploy to Azure Functions' (Azure/functions-action@v1) FOI REMOVIDO.
+          # Garante que o build do contêiner seja feito pelo Azure (usando o ACR gerenciado)
+          buildContainerInAzure: true
