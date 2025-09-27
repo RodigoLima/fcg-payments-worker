@@ -14,14 +14,11 @@ env:
   RESOURCE_GROUP: rg-fcg-payments
   CONTAINER_APP_NAME: fnc-fcg-payments
   APP_SOURCE_PATH: ./FCGPagamentos.Worker
-  ACR_LOGIN_SERVER_URL: livelyisland-8acf786d.brazilsouth.azurecontainerapps.io
-  IMAGE_NAME_BASE: livelyisland-8acf786d.brazilsouth.azurecontainerapps.io/fcg-payments-worker-image
-
+  
 jobs:
   deploy:
     runs-on: ubuntu-latest
     
-    # Configuração de seguranca OIDC (Identidade Atribuída pelo Usuário)
     permissions:
       id-token: write
       contents: read
@@ -37,13 +34,13 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           
-      # 1. Deploy para Azure Container Apps
-      # A ação faz o Build do Dockerfile, Push para o ACR e cria a Revisão do Container App.
-      - name: Deploy Function to Container Apps
-        uses: azure/container-apps-deploy-action@v1
-        with:
-          containerAppName: ${{ env.CONTAINER_APP_NAME }}
-          resourceGroup: ${{ env.RESOURCE_GROUP }}
-          appSourcePath: ${{ env.APP_SOURCE_PATH }}
-          registryUrl: ${{ env.ACR_LOGIN_SERVER_URL }}
-          imageToBuild: ${{ env.IMAGE_NAME_BASE }}
+      - name: Deploy Source Code (Azure Build Bypass)
+        run: |
+          # Instala a extensão Container App
+          az extension add --name containerapp --upgrade
+          
+          az containerapp update \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --source ${{ env.APP_SOURCE_PATH }}
+        
