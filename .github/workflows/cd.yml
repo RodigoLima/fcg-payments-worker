@@ -10,7 +10,7 @@ on:
     types: [completed]
 
 env:
-  # Nomes dos recursos criados na Azure
+  # Recursos do Azure
   RESOURCE_GROUP: rg-fcg-payments
   CONTAINER_APP_NAME: fnc-fcg-payments
   APP_SOURCE_PATH: ./FCGPagamentos.Worker
@@ -28,19 +28,17 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Azure Login (OIDC - UAMI)
+        id: login
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           
-      - name: Deploy Source Code (Azure Build Bypass)
-        run: |
-          # Instala a extensão Container App
-          az extension add --name containerapp --upgrade
+      - name: Deploy Source Code Natively (Azure Build)
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          containerAppName: ${{ env.CONTAINER_APP_NAME }}
+          resourceGroup: ${{ env.RESOURCE_GROUP }}
+          appSourcePath: ${{ env.APP_SOURCE_PATH }}
           
-          az containerapp update \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --source ${{ env.APP_SOURCE_PATH }}
-        
