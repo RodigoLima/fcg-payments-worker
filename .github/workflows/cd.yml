@@ -15,13 +15,15 @@ env:
   CONTAINER_APP_NAME: fnc-fcg-payments
   APP_SOURCE_PATH: ./FCGPagamentos.Worker
   
-  ACR_LOGIN_SERVER_URL: livelyisland-8acf786d.brazilsouth.azurecontainerapps.io
-  IMAGE_NAME_BASE: livelyisland-8acf786d.brazilsouth.azurecontainerapps.io/fcg-payments-worker-image
+  # VALORES ANTERIORES REMOVIDOS PARA FORÇAR FLUXO NATIVO DE SOURCE DEPLOY
+  # ACR_LOGIN_SERVER_URL: livelyisland-8acf786d.brazilsouth.azurecontainerapps.io
+  # IMAGE_NAME_BASE: livelyisland-8acf786d.brazilsouth.azurecontainerapps.io/fcg-payments-worker-image
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     
+    # Configuração de seguranca OIDC (Identidade Atribuída pelo Usuário)
     permissions:
       id-token: write
       contents: read
@@ -30,6 +32,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # PASSO 1: AUTENTICAÇÃO OIDC (UAMI)
       - name: Azure Login (OIDC - UAMI)
         uses: azure/login@v2
         with:
@@ -37,13 +40,17 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           
-      - name: Deploy Function to Container Apps
+      # PASSO 2 (CORRIGIDO): DEPLOY NATIVO FORÇANDO O AZURE BUILD
+      # Isso usa a UAMI para dar permissão de upload e aciona o ACR Build Service,
+      # resolvendo o problema de "no such host" ao construir DENTRO do Azure.
+      - name: Deploy Function to Container Apps (Azure Build)
         uses: azure/container-apps-deploy-action@v1
         with:
           containerAppName: ${{ env.CONTAINER_APP_NAME }}
           resourceGroup: ${{ env.RESOURCE_GROUP }}
           
-          # Parametros obrigatorios para o build:
+          # Parametro mais nativo para deploy de código-fonte
           appSourcePath: ${{ env.APP_SOURCE_PATH }}
-          registryUrl: ${{ env.ACR_LOGIN_SERVER_URL }} 
-          imageToBuild: ${{ env.IMAGE_NAME_BASE }}
+          
+          # Imagem de placeholder. O Azure Build a substituirá, mas o ACA exige uma imagem válida.
+          imageToBuild: mcr.microsoft.com/azure-functions/dotnet:4-dotnet6-appservice
