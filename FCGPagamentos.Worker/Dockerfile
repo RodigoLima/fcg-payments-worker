@@ -2,12 +2,17 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
+# Limpar configurações problemáticas do NuGet
+RUN rm -rf /root/.nuget/NuGet.Config 2>/dev/null || true
+
 # Copia os arquivos de projeto (.csproj) para restaurar as dependências
 # Isso otimiza o cache do Docker
 COPY ["FCGPagamentos_Worker.csproj", "."]
+
+# Restaurar dependências com configurações limpas
 RUN dotnet restore "FCGPagamentos_Worker.csproj" \
-    --runtime linux-x64 \
-    --self-contained false
+    --disable-parallel \
+    --verbosity normal
 
 # Copia todo o código-fonte restante
 COPY . .
@@ -18,7 +23,6 @@ RUN dotnet publish "FCGPagamentos_Worker.csproj" \
     -o /app/publish \
     --runtime linux-x64 \
     --self-contained false \
-    --no-restore \
     -p:PublishSingleFile=false \
     -p:PublishTrimmed=false
 

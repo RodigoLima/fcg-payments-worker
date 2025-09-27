@@ -1,0 +1,46 @@
+# Arquivos de build e cache
+bin/
+obj/
+out/
+
+# Arquivos de configuração local
+local.settings.json
+appsettings.Development.json
+appsettings.Local.json
+
+# Arquivos de IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.cache
+
+# Arquivos de NuGet local
+packages/
+.nuget/
+
+# Arquivos de log
+*.log
+logs/
+
+# Arquivos temporários
+*.tmp
+*.temp
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+
+# Arquivos de configuração do Visual Studio
+*.csproj.user
+*.csproj.vspscc
+*.sln.docstates
+
+# Arquivos de teste
+TestResults/
+*.trx
+*.coverage
+
+# Arquivos de documentação
+*.md
+README.md
