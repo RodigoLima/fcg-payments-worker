@@ -1,4 +1,4 @@
-name: CD
+name: CD - Deploy to Container Apps
 
 on:
   workflow_dispatch:
@@ -7,41 +7,54 @@ on:
     branches: [ "main" ]
     types: [completed]
 
+env:
+  # Variáveis de Ambiente para o Deploy
+  RESOURCE_GROUP: rg-fcg-payments
+  CONTAINER_APP_NAME: fnc-fcg-payments
+  # Este caminho deve apontar para a PASTA que contém o seu Dockerfile e o .csproj
+  APP_SOURCE_PATH: ./FCGPagamentos.Worker
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     
     permissions:
       id-token: write
-      contents: read
+      contents: read # Necessário para o checkout
       
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-          
-      - name: Restore dependencies
-        run: dotnet restore ./FCGPagamentos.Worker/FCGPagamentos_Worker.csproj
-        
-      - name: Build project
-        run: dotnet build ./FCGPagamentos.Worker/FCGPagamentos_Worker.csproj -c Release --no-restore
-        
-      - name: Publish application
-        run: dotnet publish ./FCGPagamentos.Worker/FCGPagamentos_Worker.csproj -c Release -o ./out/func --no-build
-          
-      - name: Azure Login
+      # ATENÇÃO: Os passos de DOTNET BUILD, RESTORE e PUBLISH são INÚTEIS aqui.
+      # O 'azure/container-apps-deploy-action' fará o build DENTRO do contêiner.
+      # Removendo esses passos, você economiza tempo e recursos no seu pipeline.
+
+      - name: Azure Login (OIDC - UAMI)
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           
-      - name: Deploy to Azure Functions
-        uses: Azure/functions-action@v1
+      # 1. Instala a extensão Containerapp
+      - name: Install Container Apps Extension
+        run: az extension add --name containerapp --upgrade
+
+      # 2. Deploy para Azure Container Apps
+      # Esta AÇÃO faz o build, push para o ACR gerenciado e a criação da nova revisão.
+      - name: Deploy to Azure Container Apps
+        uses: azure/container-apps-deploy-action@v1
         with:
-          app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
-          package: ./out/func
+          # Grupo e Nome da Function App no ACA
+          containerAppName: ${{ env.CONTAINER_APP_NAME }}
+          resourceGroup: ${{ env.RESOURCE_GROUP }}
+          
+          # Caminho do código-fonte onde o Dockerfile deve estar
+          appSourcePath: ${{ env.APP_SOURCE_PATH }}
+          
+          # Para garantir que o build .NET seja feito corretamente
+          buildContainerInAzure: true 
+          # O build será feito no Azure usando o ACR gerenciado.
+          
+      # O passo 'Deploy to Azure Functions' (Azure/functions-action@v1) FOI REMOVIDO.
