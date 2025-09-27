@@ -43,6 +43,4 @@ jobs:
           containerAppName: ${{ env.CONTAINER_APP_NAME }}
           resourceGroup: ${{ env.RESOURCE_GROUP }}
           appSourcePath: ${{ env.APP_SOURCE_PATH }}
-          
-          # Parametro corrigido que a acao exigia:
           registryUrl: ${{ env.ACR_LOGIN_SERVER_URL }}
