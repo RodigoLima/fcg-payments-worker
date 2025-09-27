@@ -13,7 +13,6 @@ env:
   # Nomes dos recursos criados na Azure
   RESOURCE_GROUP: rg-fcg-payments
   CONTAINER_APP_NAME: fnc-fcg-payments
-  # Caminho relativo à raiz do repositório onde o Dockerfile e o .csproj estão
   APP_SOURCE_PATH: ./FCGPagamentos.Worker
 
 jobs:
@@ -44,5 +43,3 @@ jobs:
           containerAppName: ${{ env.CONTAINER_APP_NAME }}
           resourceGroup: ${{ env.RESOURCE_GROUP }}
           appSourcePath: ${{ env.APP_SOURCE_PATH }}
-          # Garante que o build do contêiner seja feito pelo Azure (usando o ACR gerenciado)
-          buildContainerInAzure: true
