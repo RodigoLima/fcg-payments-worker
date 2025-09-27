@@ -15,6 +15,9 @@ env:
   CONTAINER_APP_NAME: fnc-fcg-payments
   APP_SOURCE_PATH: ./FCGPagamentos.Worker
   
+  ACR_LOGIN_SERVER_URL: livelyisland-8acf786d.brazilsouth.azurecontainerapps.io
+  IMAGE_NAME_BASE: livelyisland-8acf786d.brazilsouth.azurecontainerapps.io/fcg-payments-worker-image
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -28,17 +31,19 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Azure Login (OIDC - UAMI)
-        id: login
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           
-      - name: Deploy Source Code Natively (Azure Build)
+      - name: Deploy Function to Container Apps
         uses: azure/container-apps-deploy-action@v1
         with:
           containerAppName: ${{ env.CONTAINER_APP_NAME }}
           resourceGroup: ${{ env.RESOURCE_GROUP }}
-          appSourcePath: ${{ env.APP_SOURCE_PATH }}
           
+          # Parametros obrigatorios para o build:
+          appSourcePath: ${{ env.APP_SOURCE_PATH }}
+          registryUrl: ${{ env.ACR_LOGIN_SERVER_URL }} 
+          imageToBuild: ${{ env.IMAGE_NAME_BASE }}
