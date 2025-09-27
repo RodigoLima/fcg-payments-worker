@@ -4,8 +4,8 @@ WORKDIR /src
 
 # Copia os arquivos de projeto (.csproj) para restaurar as dependências
 # Isso otimiza o cache do Docker
-COPY ["FCGPagamentos.Worker.csproj", "."]
-RUN dotnet restore "FCGPagamentos.Worker.csproj" \
+COPY ["FCGPagamentos_Worker.csproj", "."]
+RUN dotnet restore "FCGPagamentos_Worker.csproj" \
     --runtime linux-x64 \
     --self-contained false
 
@@ -13,7 +13,7 @@ RUN dotnet restore "FCGPagamentos.Worker.csproj" \
 COPY . .
 
 # Publica o projeto para a pasta de destino final com otimizações
-RUN dotnet publish "FCGPagamentos.Worker.csproj" \
+RUN dotnet publish "FCGPagamentos_Worker.csproj" \
     -c Release \
     -o /app/publish \
     --runtime linux-x64 \
@@ -32,7 +32,9 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     AzureFunctionsJobHost__Logging__Console__IsEnabled=true \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
-    DOTNET_RUNNING_IN_CONTAINER=true
+    DOTNET_RUNNING_IN_CONTAINER=true \
+    FUNCTIONS_WORKER_RUNTIME=dotnet-isolated \
+    FUNCTIONS_EXTENSION_VERSION=~4
 
 # Define o diretório de trabalho
 WORKDIR /home/site/wwwroot
@@ -49,6 +51,7 @@ USER appuser
 # Expõe a porta padrão do Azure Functions
 EXPOSE 80
 
-# Health check para verificar se a aplicação está funcionando
+# Health check otimizado para Azure Functions
+# Usa o endpoint padrão de health do Azure Functions
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:80/api/health || exit 1
+    CMD curl -f http://localhost:80/admin/host/status || exit 1
