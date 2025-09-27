@@ -4,14 +4,13 @@ WORKDIR /src
 
 # Copia os arquivos de projeto (.csproj) para restaurar as dependências
 # Isso otimiza o cache do Docker
-COPY ["FCGPagamentos.Worker/FCGPagamentos.Worker.csproj", "FCGPagamentos.Worker/"]
-RUN dotnet restore "FCGPagamentos.Worker/FCGPagamentos.Worker.csproj" \
+COPY ["FCGPagamentos.Worker.csproj", "."]
+RUN dotnet restore "FCGPagamentos.Worker.csproj" \
     --runtime linux-x64 \
     --self-contained false
 
 # Copia todo o código-fonte restante
 COPY . .
-WORKDIR "/src/FCGPagamentos.Worker"
 
 # Publica o projeto para a pasta de destino final com otimizações
 RUN dotnet publish "FCGPagamentos.Worker.csproj" \
