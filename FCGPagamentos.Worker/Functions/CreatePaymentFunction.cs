@@ -39,19 +39,25 @@ public class CreatePaymentFunction
                 return;
             }
 
-            // Deserializar evento
+            // Deserializar evento usando DTO para lidar com strings em campos GUID
             try
             {
-                purchaseEvent = JsonSerializer.Deserialize<GamePurchaseRequestedEvent>(message);
-                if (purchaseEvent == null)
+                var eventDto = JsonSerializer.Deserialize<GamePurchaseRequestedEventDto>(message);
+                if (eventDto == null)
                 {
-                    _logger.LogError("Falha ao deserializar evento de compra. Mensagem: {Message}", message);
+                    _logger.LogError("Falha ao deserializar evento de compra - DTO é nulo. Mensagem: {Message}", message);
                     return;
                 }
+                purchaseEvent = eventDto.ToGamePurchaseRequestedEvent();
             }
             catch (JsonException ex)
             {
                 _logger.LogError(ex, "Erro ao deserializar evento de compra. Mensagem: {Message}", message);
+                return;
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogError(ex, "Erro ao converter campos GUID do evento de compra. Mensagem: {Message}", message);
                 return;
             }
 
