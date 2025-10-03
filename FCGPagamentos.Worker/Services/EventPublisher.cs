@@ -38,7 +38,13 @@ public class EventPublisher : IEventPublisher
 
     public async Task PublishGamePurchaseCompletedAsync(GamePurchaseCompletedEvent completedEvent, CancellationToken cancellationToken = default)
     {
+        _logger.LogInformation("=== INÍCIO PUBLICAÇÃO GAME PURCHASE COMPLETED ===");
+        _logger.LogInformation("Evento recebido: PaymentId={PaymentId}, UserId={UserId}, GameId={GameId}, Amount={Amount}", 
+            completedEvent.PaymentId, completedEvent.UserId, completedEvent.GameId, completedEvent.Amount);
+        
         await PublishToQueueAsync("game-purchase-completed", completedEvent, cancellationToken);
+        
+        _logger.LogInformation("=== FIM PUBLICAÇÃO GAME PURCHASE COMPLETED ===");
     }
 
     // Método genérico para publicar em qualquer fila
@@ -55,9 +61,26 @@ public class EventPublisher : IEventPublisher
                 WriteIndented = false // Compacto para filas
             });
 
+            _logger.LogDebug("JSON serializado: {EventJson}", eventJson);
+
             // Codificar JSON em base64
             var eventJsonBytes = System.Text.Encoding.UTF8.GetBytes(eventJson);
             var eventJsonBase64 = Convert.ToBase64String(eventJsonBytes);
+
+            _logger.LogInformation("JSON codificado em Base64: {Base64Length} caracteres", eventJsonBase64.Length);
+            _logger.LogDebug("Conteúdo Base64: {Base64Content}", eventJsonBase64);
+
+            // Verificar se é realmente Base64 válido
+            try
+            {
+                var decodedBytes = Convert.FromBase64String(eventJsonBase64);
+                var decodedJson = System.Text.Encoding.UTF8.GetString(decodedBytes);
+                _logger.LogInformation("✓ Verificação Base64: Decodificação bem-sucedida, {DecodedLength} caracteres", decodedJson.Length);
+            }
+            catch (Exception decodeEx)
+            {
+                _logger.LogError(decodeEx, "✗ Erro na verificação Base64");
+            }
 
             // Obter client da fila
             var queueClient = _queueClientFactory.GetQueueClient(queueName);
@@ -65,7 +88,7 @@ public class EventPublisher : IEventPublisher
             // Publicar na fila (agora com conteúdo codificado em base64)
             await queueClient.SendMessageAsync(eventJsonBase64, cancellationToken);
             
-            _logger.LogInformation("Evento publicado com sucesso na fila {QueueName} (codificado em base64)", queueName);
+            _logger.LogInformation("✓ Evento publicado com sucesso na fila {QueueName} (codificado em base64)", queueName);
         }
         catch (Exception ex)
         {
