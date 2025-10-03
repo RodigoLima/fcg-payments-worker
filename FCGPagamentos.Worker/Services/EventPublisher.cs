@@ -55,13 +55,17 @@ public class EventPublisher : IEventPublisher
                 WriteIndented = false // Compacto para filas
             });
 
+            // Codificar JSON em base64
+            var eventJsonBytes = System.Text.Encoding.UTF8.GetBytes(eventJson);
+            var eventJsonBase64 = Convert.ToBase64String(eventJsonBytes);
+
             // Obter client da fila
             var queueClient = _queueClientFactory.GetQueueClient(queueName);
             
-            // Publicar na fila
-            await queueClient.SendMessageAsync(eventJson, cancellationToken);
+            // Publicar na fila (agora com conteúdo codificado em base64)
+            await queueClient.SendMessageAsync(eventJsonBase64, cancellationToken);
             
-            _logger.LogInformation("Evento publicado com sucesso na fila {QueueName}", queueName);
+            _logger.LogInformation("Evento publicado com sucesso na fila {QueueName} (codificado em base64)", queueName);
         }
         catch (Exception ex)
         {
