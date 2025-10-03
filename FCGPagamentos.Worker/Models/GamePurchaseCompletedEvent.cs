@@ -3,7 +3,7 @@ namespace FCGPagamentos.Worker.Models;
 public record GamePurchaseCompletedEvent(
     Guid PaymentId,
     Guid UserId,
-    Guid GameId,
+    string GameId,
     decimal Amount,
     string Currency,
     string PaymentMethod,

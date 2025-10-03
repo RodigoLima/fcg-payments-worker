@@ -101,7 +101,7 @@ public class PaymentService : IPaymentService
             { PaymentId: var id } when id == Guid.Empty => "PaymentId não pode ser vazio",
             { CorrelationId: var id } when id == Guid.Empty => "CorrelationId não pode ser vazio",
             { UserId: var id } when id == Guid.Empty => "UserId não pode ser vazio",
-            { GameId: var id } when id == Guid.Empty => "GameId não pode ser vazio",
+            { GameId: null or "" } => "GameId não pode ser vazio",
             { Amount: <= 0 } => "Amount deve ser maior que zero",
             { Currency: null or "" } => "Currency não pode ser vazio",
             _ => string.Empty
@@ -211,7 +211,7 @@ public class PaymentService : IPaymentService
             { PaymentId: var id } when id == Guid.Empty => "PaymentId não pode ser vazio",
             { CorrelationId: var id } when id == Guid.Empty => "CorrelationId não pode ser vazio",
             { UserId: var id } when id == Guid.Empty => "UserId não pode ser vazio",
-            { GameId: var id } when id == Guid.Empty => "GameId não pode ser vazio",
+            { GameId: null or "" } => "GameId não pode ser vazio",
             { Amount: <= 0 } => "Amount deve ser maior que zero",
             { Currency: null or "" } => "Currency não pode ser vazio",
             { PaymentMethod: null or "" } => "PaymentMethod não pode ser vazio",

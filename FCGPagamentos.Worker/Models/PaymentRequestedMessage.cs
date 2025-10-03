@@ -4,7 +4,7 @@ public record PaymentRequestedMessage(
     Guid PaymentId, 
     Guid CorrelationId,
     Guid UserId, 
-    Guid GameId, 
+    string GameId, 
     decimal Amount, 
     string Currency,
     string PaymentMethod,
@@ -31,7 +31,7 @@ public class PaymentRequestedMessageDto
             ParseGuid(PaymentId, nameof(PaymentId)),
             ParseGuid(CorrelationId, nameof(CorrelationId)),
             ParseGuid(UserId, nameof(UserId)),
-            ParseGuid(GameId, nameof(GameId)),
+            GameId, // GameId agora é string (ObjectId do MongoDB)
             Amount,
             Currency,
             PaymentMethod,

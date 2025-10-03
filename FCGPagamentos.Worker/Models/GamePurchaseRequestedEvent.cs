@@ -3,7 +3,7 @@ namespace FCGPagamentos.Worker.Models;
 public record GamePurchaseRequestedEvent(
     Guid PaymentId,
     Guid UserId,
-    Guid GameId,
+    string GameId,
     decimal Amount,
     string Currency,
     string PaymentMethod,
@@ -26,7 +26,7 @@ public class GamePurchaseRequestedEventDto
         return new GamePurchaseRequestedEvent(
             ParseGuid(PaymentId, nameof(PaymentId)),
             ParseGuid(UserId, nameof(UserId)),
-            ParseGuid(GameId, nameof(GameId)),
+            GameId, // GameId agora é string (ObjectId do MongoDB)
             Amount,
             Currency,
             PaymentMethod,
